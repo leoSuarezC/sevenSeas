@@ -1,0 +1,29 @@
+# SQL Server for reviewers without SQL Server LocalDB (macOS / Linux).
+#
+# On Windows, LocalDB is the default and no container is needed — see README.
+# Row-Level Security and SESSION_CONTEXT (used for tenant isolation) are
+# supported by both LocalDB and this image, so behaviour is identical.
+#
+#   docker compose up -d
+#   then use the ConnectionStrings__SpecimenCheckIn value from .env.example
+services:
+  sql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: specimencheckin-sql
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Local_Dev_Pa55w0rd!"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqldata:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  sqldata:
