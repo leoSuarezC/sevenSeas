@@ -1,7 +1,10 @@
 using Microsoft.EntityFrameworkCore;
+using SpecimenCheckIn.Commands.Manifests;
 using SpecimenCheckIn.Context;
 using SpecimenCheckIn.Context.Tenancy;
+using SpecimenCheckIn.Queries.Manifests;
 using SpecimenCheckIn.WebAPI.Middleware;
+using SpecimenCheckIn.WebAPI.Seeding;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -13,6 +16,8 @@ string connectionString = builder.Configuration.GetConnectionString("SpecimenChe
 // interceptor that publishes it to SESSION_CONTEXT, and the DbContext that filters on it.
 builder.Services.AddScoped<TenantContext>();
 builder.Services.AddScoped<ITenantContext>(services => services.GetRequiredService<TenantContext>());
+builder.Services.AddScoped<UserContext>();
+builder.Services.AddScoped<IUserContext>(services => services.GetRequiredService<UserContext>());
 builder.Services.AddScoped<TenantSessionInterceptor>();
 
 builder.Services.AddDbContext<SpecimenCheckInContext>((services, options) =>
@@ -22,10 +27,25 @@ builder.Services.AddDbContext<SpecimenCheckInContext>((services, options) =>
             SpecimenCheckInContext.Schema))
         .AddInterceptors(services.GetRequiredService<TenantSessionInterceptor>()));
 
+builder.Services.AddScoped<ManifestQueries>();
+builder.Services.AddScoped<CheckInCommands>();
+
+// Injected rather than calling DateTime.UtcNow, so time is one more thing a test can pin
+// down instead of race against.
+builder.Services.AddSingleton(TimeProvider.System);
+
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<CheckInExceptionHandler>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// The Vue dev server is a different origin; the API is local-only, so this stays narrow.
+const string devCors = "dev";
+builder.Services.AddCors(options => options.AddPolicy(devCors, policy => policy
+    .WithOrigins("http://localhost:5173")
+    .AllowAnyHeader()
+    .AllowAnyMethod()));
 
 WebApplication app = builder.Build();
 
@@ -33,6 +53,10 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+    app.UseCors(devCors);
+
+    // Migrate and seed on start, so "clone, run" is the whole setup.
+    await DatabaseSeeder.SeedAsync(app.Services);
 }
 
 app.UseExceptionHandler();
@@ -43,7 +67,7 @@ app.UseMiddleware<TenantMiddleware>();
 
 app.MapControllers();
 
-app.Run();
+await app.RunAsync();
 
 /// <summary>
 /// Exposed so the integration tests can host the API through WebApplicationFactory.

@@ -18,11 +18,11 @@ public sealed class TestDatabase : IAsyncLifetime
     /// <summary>The xUnit collection sharing this database.</summary>
     public const string CollectionName = "Database";
 
-    /// <summary>A lab used by the tests.</summary>
-    public const int RiversideLabId = 1;
+    /// <summary>The lab the tests act as by default.</summary>
+    public const int CentralLabId = 1;
 
     /// <summary>A second lab, used to prove the two cannot see each other.</summary>
-    public const int NorthgateLabId = 2;
+    public const int WestsideLabId = 2;
 
     private const string ConnectionString =
         "Server=(localdb)\\MSSQLLocalDB;Database=SpecimenCheckIn_Tests;Trusted_Connection=True;TrustServerCertificate=True";
@@ -42,8 +42,8 @@ public sealed class TestDatabase : IAsyncLifetime
         await database.Database.MigrateAsync();
 
         database.Labs.AddRange(
-            new Lab { Id = RiversideLabId, Name = "Riverside Clinic Lab" },
-            new Lab { Id = NorthgateLabId, Name = "Northgate Derm Lab" });
+            new Lab { Id = CentralLabId, Name = "Central Lab" },
+            new Lab { Id = WestsideLabId, Name = "Westside Pathology Lab" });
 
         await database.SaveChangesAsync();
     }

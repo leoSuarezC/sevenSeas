@@ -54,4 +54,59 @@ public class Specimen : TenantOwnedEntity
     /// Gets or sets the manifest this specimen belongs to.
     /// </summary>
     public Manifest? Manifest { get; set; }
+
+    /// <summary>
+    /// Records that the bottle physically arrived.
+    /// </summary>
+    /// <param name="labTech">The technician checking it in.</param>
+    /// <param name="at">When it was checked in (UTC).</param>
+    /// <returns>
+    /// <see langword="true"/> if this changed anything; <see langword="false"/> if the
+    /// bottle was already received.
+    /// </returns>
+    /// <remarks>
+    /// Idempotent, and it has to be: bottles get scanned twice at a busy desk. A repeat
+    /// scan keeps the original technician and timestamp rather than rewriting who
+    /// received it, and reports that nothing changed so counts cannot drift.
+    /// </remarks>
+    public bool Receive(string labTech, DateTime at)
+    {
+        if (this.Status == SpecimenStatus.Received)
+        {
+            return false;
+        }
+
+        this.Status = SpecimenStatus.Received;
+        this.ReceivedBy = labTech;
+        this.ReceivedAt = at;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Reports the bottle as missing.
+    /// </summary>
+    /// <returns>
+    /// <see langword="true"/> if this changed anything; <see langword="false"/> if the
+    /// bottle was already flagged.
+    /// </returns>
+    /// <remarks>
+    /// Also idempotent, so flagging twice raises one discrepancy rather than two.
+    /// </remarks>
+    public bool Flag()
+    {
+        if (this.Status == SpecimenStatus.Flagged)
+        {
+            return false;
+        }
+
+        this.Status = SpecimenStatus.Flagged;
+
+        // A bottle cannot be both missing and in hand: reporting it missing clears any
+        // receipt details, so the record cannot claim someone received what is absent.
+        this.ReceivedBy = null;
+        this.ReceivedAt = null;
+
+        return true;
+    }
 }

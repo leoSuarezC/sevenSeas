@@ -61,7 +61,7 @@ public class TenantCoverageTests
         options.UseSqlServer("Server=(localdb)\\MSSQLLocalDB;Database=SpecimenCheckIn_ModelOnly");
 
         TenantContext tenant = new();
-        tenant.Resolve(TestDatabase.RiversideLabId);
+        tenant.Resolve(TestDatabase.CentralLabId);
 
         using SpecimenCheckInContext context = new(options.Options, tenant);
 

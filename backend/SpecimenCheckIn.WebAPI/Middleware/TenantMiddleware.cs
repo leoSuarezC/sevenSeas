@@ -27,6 +27,9 @@ public sealed class TenantMiddleware(RequestDelegate next)
     /// <summary>The header carrying the current lab.</summary>
     public const string HeaderName = "X-Lab-Id";
 
+    /// <summary>The header naming the technician at the desk.</summary>
+    public const string LabTechHeaderName = "X-Lab-Tech";
+
     private static readonly string[] UntenantedPaths = ["/swagger", "/health"];
 
     /// <summary>
@@ -34,9 +37,14 @@ public sealed class TenantMiddleware(RequestDelegate next)
     /// </summary>
     /// <param name="context">The current request.</param>
     /// <param name="tenant">The tenant to bind for this request.</param>
+    /// <param name="user">The technician to bind for this request.</param>
     /// <param name="database">Used to confirm the lab exists.</param>
     /// <returns>A task that completes when the request has been handled.</returns>
-    public async Task InvokeAsync(HttpContext context, TenantContext tenant, SpecimenCheckInContext database)
+    public async Task InvokeAsync(
+        HttpContext context,
+        TenantContext tenant,
+        UserContext user,
+        SpecimenCheckInContext database)
     {
         if (IsUntenanted(context.Request.Path))
         {
@@ -69,6 +77,13 @@ public sealed class TenantMiddleware(RequestDelegate next)
         }
 
         tenant.Resolve(labId);
+
+        // The technician is a label on the work, not a permission: unlike the lab, an
+        // absent or unrecognised name costs nothing to default.
+        if (context.Request.Headers.TryGetValue(LabTechHeaderName, out Microsoft.Extensions.Primitives.StringValues labTech))
+        {
+            user.Resolve(labTech.ToString());
+        }
 
         await next(context);
     }
