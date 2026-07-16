@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using SpecimenCheckIn.Context.Tenancy;
 
 namespace SpecimenCheckIn.Context;
 
@@ -28,6 +29,9 @@ public class DesignTimeSpecimenCheckInContextFactory : IDesignTimeDbContextFacto
             "__EFMigrationsHistory",
             SpecimenCheckInContext.Schema));
 
-        return new SpecimenCheckInContext(options.Options);
+        // Migrations only ever issue DDL, which is not tenant-scoped, so the tooling gets
+        // a context with no lab resolved. Should design-time code ever try to touch tenant
+        // data, it fails rather than reaching across labs.
+        return new SpecimenCheckInContext(options.Options, new TenantContext());
     }
 }

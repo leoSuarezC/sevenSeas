@@ -1,7 +1,8 @@
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata;
 using SpecimenCheckIn.Context.Sql;
+using SpecimenCheckIn.Context.Tenancy;
 using SpecimenCheckIn.Models;
 
 namespace SpecimenCheckIn.Context;
@@ -11,10 +12,21 @@ namespace SpecimenCheckIn.Context;
 /// class and the migrations generated from it.
 /// </summary>
 /// <param name="options">The options used to configure the instance.</param>
-public class SpecimenCheckInContext(DbContextOptions<SpecimenCheckInContext> options) : DbContext(options)
+/// <param name="tenant">The lab the current request acts as.</param>
+public class SpecimenCheckInContext(DbContextOptions<SpecimenCheckInContext> options, ITenantContext tenant)
+    : DbContext(options)
 {
     /// <summary>The database schema name for this context.</summary>
     public const string Schema = RowLevelSecurity.Schema;
+
+    /// <summary>
+    /// Gets the lab every tenant-owned query is filtered to.
+    /// </summary>
+    /// <remarks>
+    /// Public because the global query filters compile against it. Reading it without a
+    /// resolved tenant throws, so an untenanted query fails rather than returning rows.
+    /// </remarks>
+    public int CurrentLabId => tenant.LabId;
 
     /// <summary>Gets the labs — the tenants.</summary>
     public virtual DbSet<Lab> Labs => this.Set<Lab>();
@@ -119,7 +131,7 @@ public class SpecimenCheckInContext(DbContextOptions<SpecimenCheckInContext> opt
             // No navigation properties: an audit row must outlive whatever it describes.
         });
 
-        ConfigureTenantOwnedEntities(modelBuilder);
+        this.ConfigureTenantOwnedEntities(modelBuilder);
 
         // Receiving desks correct mistakes; they do not erase history. Deleting a
         // manifest should fail loudly rather than quietly take its specimens with it.
@@ -133,9 +145,14 @@ public class SpecimenCheckInContext(DbContextOptions<SpecimenCheckInContext> opt
 
     /// <summary>
     /// Applies the conventions every tenant-owned table shares: a non-clustered Guid key,
-    /// an identity clustering key, and a LabId the database stamps from session context.
+    /// an identity clustering key, a LabId the database stamps from session context, and
+    /// the global query filter that scopes every read to the current lab.
     /// </summary>
-    private static void ConfigureTenantOwnedEntities(ModelBuilder modelBuilder)
+    /// <remarks>
+    /// Applied by walking the model rather than entity by entity, so a tenant-owned table
+    /// added later cannot be left unfiltered by forgetting a line here.
+    /// </remarks>
+    private void ConfigureTenantOwnedEntities(ModelBuilder modelBuilder)
     {
         List<Type> tenantOwned = modelBuilder.Model
             .GetEntityTypes()
@@ -159,8 +176,29 @@ public class SpecimenCheckInContext(DbContextOptions<SpecimenCheckInContext> opt
                 builder.Property(nameof(TenantOwnedEntity.LabId))
                     .ValueGeneratedOnAdd()
                     .HasDefaultValueSql(RowLevelSecurity.CurrentLabIdDefaultSql);
+
+                builder.HasQueryFilter(this.BuildTenantFilter(clrType));
             });
         }
+    }
+
+    /// <summary>
+    /// Builds <c>entity =&gt; entity.LabId == this.CurrentLabId</c> for the given entity type.
+    /// </summary>
+    /// <remarks>
+    /// Referencing the context instance is what makes the filter re-evaluate per request:
+    /// EF rewrites the property access into a query parameter rather than baking today's
+    /// lab into the cached model.
+    /// </remarks>
+    private LambdaExpression BuildTenantFilter(Type clrType)
+    {
+        ParameterExpression entity = Expression.Parameter(clrType, "entity");
+
+        BinaryExpression sameLab = Expression.Equal(
+            Expression.Property(entity, nameof(TenantOwnedEntity.LabId)),
+            Expression.Property(Expression.Constant(this), nameof(this.CurrentLabId)));
+
+        return Expression.Lambda(sameLab, entity);
     }
 
     /// <summary>
