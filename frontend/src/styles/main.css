@@ -1,0 +1,61 @@
+/* Design tokens read off the reference screenshot. Kept in one place so the components
+   describe layout and the palette stays consistent. */
+:root {
+  --navy: #1d3f5e;
+  --navy-deep: #16324b;
+  --blue: #2f6fa8;
+  --blue-link: #2b6cb0;
+
+  --ink: #1f2933;
+  --ink-soft: #55606b;
+  --ink-faint: #8a949e;
+
+  --line: #dfe4ea;
+  --line-soft: #eaeef2;
+  --surface: #ffffff;
+  --canvas: #f4f6f8;
+  --canvas-soft: #fafbfc;
+
+  --green: #2e7d4f;
+  --green-soft: #e8f5ec;
+  --green-line: #bfe0ca;
+
+  --red: #c0392b;
+  --red-soft: #fdecea;
+  --red-line: #f5c6c0;
+
+  --amber: #b7791f;
+
+  --radius: 6px;
+  --radius-sm: 4px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* Visible focus, because a receiving desk is a keyboard-heavy place. */
+:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}

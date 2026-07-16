@@ -1,6 +1,14 @@
 namespace SpecimenCheckIn.Models.Api;
 
 /// <summary>
+/// Who the current request is acting as.
+/// </summary>
+/// <param name="LabId">The lab.</param>
+/// <param name="LabName">The lab's name, as shown in the header.</param>
+/// <param name="LabTech">The technician at the desk.</param>
+public record SessionResponse(int LabId, string LabName, string LabTech);
+
+/// <summary>
 /// The running tally shown above the specimen table.
 /// </summary>
 /// <param name="Expected">Bottles the manifest lists.</param>

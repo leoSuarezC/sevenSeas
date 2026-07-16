@@ -3,6 +3,7 @@ using SpecimenCheckIn.Commands.Manifests;
 using SpecimenCheckIn.Context;
 using SpecimenCheckIn.Context.Tenancy;
 using SpecimenCheckIn.Queries.Manifests;
+using SpecimenCheckIn.Queries.Session;
 using SpecimenCheckIn.WebAPI.Middleware;
 using SpecimenCheckIn.WebAPI.Seeding;
 
@@ -28,6 +29,7 @@ builder.Services.AddDbContext<SpecimenCheckInContext>((services, options) =>
         .AddInterceptors(services.GetRequiredService<TenantSessionInterceptor>()));
 
 builder.Services.AddScoped<ManifestQueries>();
+builder.Services.AddScoped<SessionQueries>();
 builder.Services.AddScoped<CheckInCommands>();
 
 // Injected rather than calling DateTime.UtcNow, so time is one more thing a test can pin
