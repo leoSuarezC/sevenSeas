@@ -10,9 +10,18 @@ namespace SpecimenCheckIn.Commands.Manifests;
 /// The write side of check-in: what a technician does at the receiving desk.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Like the read side, nothing here takes a lab. Loads go through the tenant-filtered
 /// context, so a manifest from another lab is simply not found, and writes are stamped
 /// with the session's lab by the database.
+/// </para>
+/// <para>
+/// Every action that changes something appends to the audit log in the same SaveChanges as
+/// the change itself, so a check-in and its record land together or not at all. Actions
+/// that change nothing append nothing: a repeat scan has to leave the system identical,
+/// audit log included, or receiving would not actually be idempotent. The log narrates what
+/// happened to the manifest, not which buttons were pressed.
+/// </para>
 /// </remarks>
 /// <param name="database">The database.</param>
 /// <param name="user">The technician performing the action.</param>
@@ -35,12 +44,16 @@ public class CheckInCommands(SpecimenCheckInContext database, IUserContext user,
 
         Specimen specimen = FindSpecimen(manifest, specimenId);
 
-        if (!specimen.Receive(user.LabTech, clock.GetUtcNow().UtcDateTime))
+        DateTime at = clock.GetUtcNow().UtcDateTime;
+
+        if (!specimen.Receive(user.LabTech, at))
         {
             // Already received: the desk scanned it twice. Saying so is not an error, and
             // writing nothing is what keeps the counts from drifting.
             return;
         }
+
+        this.Append(AuditAction.SpecimenReceived, manifest.Id, at, specimen.Id);
 
         await database.SaveChangesAsync(cancellationToken);
     }
@@ -72,6 +85,8 @@ public class CheckInCommands(SpecimenCheckInContext database, IUserContext user,
             return;
         }
 
+        DateTime at = clock.GetUtcNow().UtcDateTime;
+
         // Reuses an open discrepancy rather than stacking a second one for the same
         // bottle: flagging is a statement about the bottle, not an event log.
         bool alreadyRaised = await database.Discrepancies.AnyAsync(
@@ -88,13 +103,16 @@ public class CheckInCommands(SpecimenCheckInContext database, IUserContext user,
                 SpecimenId = specimen.Id,
                 Type = DiscrepancyType.Missing,
                 Status = DiscrepancyStatus.Open,
-                RaisedAt = clock.GetUtcNow().UtcDateTime,
+                RaisedAt = at,
                 Notes = notes,
             });
         }
 
-        // One SaveChanges, so the flag and its discrepancy land together or not at all —
-        // a flagged bottle with no discrepancy would be a mismatch nobody is tracking.
+        this.Append(AuditAction.SpecimenFlagged, manifest.Id, at, specimen.Id);
+
+        // One SaveChanges, so the flag, its discrepancy and the audit entry land together
+        // or not at all — a flagged bottle with no discrepancy would be a mismatch nobody
+        // is tracking, and a change with no record is one nobody can account for later.
         await database.SaveChangesAsync(cancellationToken);
     }
 
@@ -115,6 +133,14 @@ public class CheckInCommands(SpecimenCheckInContext database, IUserContext user,
 
         manifest.Close();
 
+        // The outcome is the one thing the action alone does not tell you: "closed" and
+        // "closed, and something was missing" are different facts about the shipment.
+        this.Append(
+            AuditAction.ManifestClosed,
+            manifest.Id,
+            clock.GetUtcNow().UtcDateTime,
+            details: manifest.Status.ToString());
+
         try
         {
             await database.SaveChangesAsync(cancellationToken);
@@ -128,6 +154,27 @@ public class CheckInCommands(SpecimenCheckInContext database, IUserContext user,
                 "Another technician changed this manifest while you were closing it. Reload it and try again.");
         }
     }
+
+    /// <summary>
+    /// Records that something happened, to be saved alongside the change itself.
+    /// </summary>
+    /// <remarks>
+    /// The actor comes from the request context rather than from anything the caller sent,
+    /// so the log records who was acting, not who a request claimed to be. No patient
+    /// details are copied in: the ids are enough to reconstruct the picture from the
+    /// tenant's own data, and an audit log is the last place PHI should accumulate.
+    /// </remarks>
+    private void Append(AuditAction action, Guid manifestId, DateTime at, Guid? specimenId = null, string? details = null) =>
+        database.AuditEvents.Add(new AuditEvent
+        {
+            Id = Guid.NewGuid(),
+            ManifestId = manifestId,
+            SpecimenId = specimenId,
+            Action = action,
+            Actor = user.LabTech,
+            At = at,
+            Details = details,
+        });
 
     private static Specimen FindSpecimen(Manifest manifest, Guid specimenId) =>
         manifest.Specimens.FirstOrDefault(specimen => specimen.Id == specimenId)
