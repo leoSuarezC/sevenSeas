@@ -36,13 +36,29 @@ public static class DatabaseSeeder
     /// Applies migrations and seeds the labs and their manifests, if not already present.
     /// </summary>
     /// <param name="services">The application's services.</param>
+    /// <param name="reset">
+    /// When <see langword="true"/>, drops the database first and rebuilds it from the
+    /// migrations, discarding everything. Only ever passed in Development — the caller
+    /// refuses it anywhere else.
+    /// </param>
     /// <param name="cancellationToken">Cancels the operation.</param>
     /// <returns>A task that completes when the database is ready.</returns>
-    public static async Task SeedAsync(IServiceProvider services, CancellationToken cancellationToken = default)
+    public static async Task SeedAsync(
+        IServiceProvider services,
+        bool reset = false,
+        CancellationToken cancellationToken = default)
     {
         await using (AsyncServiceScope scope = services.CreateAsyncScope())
         {
             SpecimenCheckInContext database = scope.ServiceProvider.GetRequiredService<SpecimenCheckInContext>();
+
+            if (reset)
+            {
+                // Dropped rather than truncated: the migrations then rebuild the security
+                // policy and the audit trigger too, so a reset returns the schema to what
+                // the migrations say it is, not just the rows to what the seed says.
+                await database.Database.EnsureDeletedAsync(cancellationToken);
+            }
 
             await database.Database.MigrateAsync(cancellationToken);
 

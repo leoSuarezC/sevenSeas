@@ -9,6 +9,10 @@ using SpecimenCheckIn.WebAPI.Seeding;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
+// Rebuilds the database from the migrations and reseeds it, discarding whatever was there.
+// For getting back to a known state after clicking around — see the README.
+bool resetDatabase = args.Contains("--reset-db", StringComparer.OrdinalIgnoreCase);
+
 string connectionString = builder.Configuration.GetConnectionString("SpecimenCheckIn")
     ?? throw new InvalidOperationException(
         "No 'SpecimenCheckIn' connection string configured. Copy .env.example to .env, or set ConnectionStrings__SpecimenCheckIn.");
@@ -51,14 +55,23 @@ builder.Services.AddCors(options => options.AddPolicy(devCors, policy => policy
 
 WebApplication app = builder.Build();
 
+// A flag that erases everything should not be one typo away from running against real
+// data, so it is refused rather than ignored anywhere but a developer's machine.
+if (resetDatabase && !app.Environment.IsDevelopment())
+{
+    throw new InvalidOperationException(
+        $"--reset-db drops the database and is only available in Development (this is {app.Environment.EnvironmentName}).");
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
     app.UseCors(devCors);
 
-    // Migrate and seed on start, so "clone, run" is the whole setup.
-    await DatabaseSeeder.SeedAsync(app.Services);
+    // Migrate and seed on start, so "clone, run" is the whole setup. Existing data is left
+    // alone: a technician's work should survive a restart, and the seed only fills a gap.
+    await DatabaseSeeder.SeedAsync(app.Services, resetDatabase);
 }
 
 app.UseExceptionHandler();
